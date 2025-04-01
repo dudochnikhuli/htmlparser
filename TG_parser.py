@@ -1,15 +1,19 @@
 from telethon import TelegramClient, functions, types
-from telethon.errors import ChannelPrivateError, FloodWaitError, UsernameNotOccupiedError
+from telethon.errors import ChannelPrivateError, FloodWaitError, UsernameNotOccupiedError, UpdateAppToLoginError
 import csv
 import os
 import re
 import asyncio
 from datetime import datetime, timedelta
 import time
+from dotenv import load_dotenv
 
-# API credentials - Replace these with your actual credentials
-API_ID = '27793006'  # Integer value
-API_HASH = '75e6cbb94d88d6983f741d5e7a04f929'  # String value
+# Load environment variables from .env file
+load_dotenv()
+
+# API credentials from environment variables
+API_ID = os.getenv('TELEGRAM_API_ID')
+API_HASH = os.getenv('TELEGRAM_API_HASH')
 
 # File paths
 INPUT_FILE = 'Results/Results.txt'
@@ -101,53 +105,84 @@ async def main():
     """
     Main function to process all channels and save results to CSV
     """
-    # Create client
-    client = TelegramClient('scraper_session', API_ID, API_HASH)
-    await client.start()
-    
-    # Check if client is authorized
-    if not await client.is_user_authorized():
-        print("You need to authorize first.")
-        await client.send_code_request(input("Enter your phone number: "))
-        await client.sign_in(input("Enter your phone number again: "), input("Enter the code: "))
-    
-    # Read usernames from input file
-    usernames = []
-    try:
-        with open(INPUT_FILE, 'r', encoding='utf-8') as file:
-            usernames = [line.strip() for line in file if line.strip()]
-    except Exception as e:
-        print(f"Error reading input file: {str(e)}")
+    # Check if API credentials are available
+    if not API_ID or not API_HASH:
+        print("Error: API credentials not found in .env file")
+        print("Please create a .env file with TELEGRAM_API_ID and TELEGRAM_API_HASH")
         return
-    
-    # Create Results directory if it doesn't exist
-    os.makedirs(os.path.dirname(OUTPUT_FILE), exist_ok=True)
-    
-    # Prepare CSV file
-    with open(OUTPUT_FILE, 'w', newline='', encoding='utf-8') as csvfile:
-        writer = csv.writer(csvfile)
-        # Write header
-        writer.writerow(['Юзернейм канала', 'Дата последнего поста', 'Количество постов за неделю', 'Юзернейм из описания'])
+
+    client = None
+    try:
+        # Create client with newer API layer version
+        client = TelegramClient('scraper_session', API_ID, API_HASH, system_version="4.16.30-vxCUSTOM")
         
-        # Process each username
-        total = len(usernames)
-        for i, username in enumerate(usernames, 1):
-            # Remove @ if it exists
-            clean_username = username[1:] if username.startswith('@') else username
+        try:
+            await client.start()
+        except UpdateAppToLoginError:
+            print("\nError: Your Telethon version is outdated for this API request.")
+            print("Try updating Telethon: pip install --upgrade telethon")
+            print("Or use a newer system_version parameter.")
+            return
             
-            print(f"Processing {i}/{total}: {username}")
+        # Check if client is authorized
+        if not await client.is_user_authorized():
+            print("You need to authorize first.")
+            try:
+                await client.send_code_request(input("Enter your phone number: "))
+                await client.sign_in(input("Enter your phone number again: "), input("Enter the code: "))
+            except Exception as e:
+                print(f"Authentication error: {str(e)}")
+                return
+        
+        # Read usernames from input file
+        usernames = []
+        try:
+            with open(INPUT_FILE, 'r', encoding='utf-8') as file:
+                usernames = [line.strip() for line in file if line.strip()]
+        except Exception as e:
+            print(f"Error reading input file: {str(e)}")
+            return
+        
+        # Create Results directory if it doesn't exist
+        os.makedirs(os.path.dirname(OUTPUT_FILE), exist_ok=True)
+        
+        # Prepare CSV file
+        with open(OUTPUT_FILE, 'w', newline='', encoding='utf-8') as csvfile:
+            writer = csv.writer(csvfile)
+            # Write header
+            writer.writerow(['Юзернейм канала', 'Дата последнего поста', 'Количество постов за неделю', 'Юзернейм из описания'])
             
-            # Get channel info
-            last_post_date, posts_last_week, description_username = await get_channel_info(client, clean_username)
-            
-            # Write to CSV
-            writer.writerow([username, last_post_date, posts_last_week, description_username])
-            
-            # Add delay to avoid hitting rate limits
-            await asyncio.sleep(1)
+            # Process each username
+            total = len(usernames)
+            for i, username in enumerate(usernames, 1):
+                # Remove @ if it exists
+                clean_username = username[1:] if username.startswith('@') else username
+                
+                print(f"Processing {i}/{total}: {username}")
+                
+                # Get channel info
+                last_post_date, posts_last_week, description_username = await get_channel_info(client, clean_username)
+                
+                # Write to CSV
+                writer.writerow([username, last_post_date, posts_last_week, description_username])
+                
+                # Add delay to avoid hitting rate limits
+                await asyncio.sleep(1)
+        
+        print(f"Completed! Results saved to {OUTPUT_FILE}")
     
-    print(f"Completed! Results saved to {OUTPUT_FILE}")
-    await client.disconnect()
+    except Exception as e:
+        print(f"An error occurred: {str(e)}")
+    
+    finally:
+        # Ensure client is disconnected if it exists and is connected
+        if client and client.is_connected():
+            await client.disconnect()
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("\nOperation cancelled by user.")
+    except Exception as e:
+        print(f"\nUnhandled error: {str(e)}")
