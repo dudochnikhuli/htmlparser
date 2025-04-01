@@ -304,6 +304,53 @@ async def process_channel(client, username, active_session, sessions_info, write
     
     return True, None, None
 
+def regenerate_sessions_info():
+    """
+    Перегенерировать файл sessions_info.json с правильной структурой на основе существующих файлов сессий
+    
+    Returns:
+        bool: Успешно ли выполнена перегенерация
+    """
+    try:
+        # Проверяем, существует ли директория сессий
+        if not os.path.exists(SESSIONS_DIR):
+            os.makedirs(SESSIONS_DIR, exist_ok=True)
+            
+        # Находим файлы сессий в директории
+        session_files = [f for f in os.listdir(SESSIONS_DIR) if f.endswith('.session')]
+        
+        if not session_files:
+            print("В директории сессий не найдено файлов сессий.")
+            return False
+            
+        # Создаем новый массив sessions_info
+        new_sessions_info = []
+        
+        for i, session_file in enumerate(session_files, 1):
+            session_name = os.path.splitext(session_file)[0]
+            
+            # Создаем информацию о сессии с минимальными необходимыми полями
+            session_info = {
+                "session_name": session_name,
+                "phone": f"Unknown-{i}",  # Временное значение
+                "username": f"Unknown-{i}",  # Временное значение
+                "first_name": f"Unknown-{i}",  # Временное значение
+                "status": "available"
+            }
+            
+            new_sessions_info.append(session_info)
+            
+        # Сохраняем новый sessions_info
+        with open(SESSIONS_INFO_FILE, 'w') as f:
+            json.dump(new_sessions_info, f, indent=4)
+            
+        print(f"Успешно перегенерирован {SESSIONS_INFO_FILE} с {len(new_sessions_info)} сессиями.")
+        return True
+        
+    except Exception as e:
+        print(f"Ошибка при перегенерации sessions_info: {str(e)}")
+        return False
+
 async def main():
     """
     Main function to process all channels and save results to CSV
@@ -326,12 +373,37 @@ async def main():
     try:
         with open(SESSIONS_INFO_FILE, 'r') as f:
             sessions_info = json.load(f)
+            
+        # Проверяем, имеет ли sessions_info ожидаемую структуру
+        if all(isinstance(session, bool) for session in sessions_info):
+            print("Предупреждение: sessions_info.json имеет неверный формат. Попытка перегенерации...")
+            success = regenerate_sessions_info()
+            
+            if success:
+                # Перезагружаем заново сгенерированный файл
+                with open(SESSIONS_INFO_FILE, 'r') as f:
+                    sessions_info = json.load(f)
+            else:
+                print("Не удалось перегенерировать sessions_info.json. Пожалуйста, запустите create_sessions.py снова.")
+                return
+                
     except Exception as e:
-        print(f"Error loading sessions info: {str(e)}")
-        return
+        print(f"Ошибка загрузки sessions_info: {str(e)}")
+        print("Попытка перегенерации sessions_info.json...")
+        success = regenerate_sessions_info()
+        
+        if success:
+            # Загружаем заново сгенерированный файл
+            with open(SESSIONS_INFO_FILE, 'r') as f:
+                sessions_info = json.load(f)
+        else:
+            print("Не удалось перегенерировать sessions_info.json. Пожалуйста, запустите create_sessions.py снова.")
+            return
     
     # Get an available session
     active_session = await get_available_session(sessions_info)
+    
+    # Остальной код функции остается без изменений...
     
     if not active_session:
         print("No available sessions. Please create sessions using create_sessions.py")

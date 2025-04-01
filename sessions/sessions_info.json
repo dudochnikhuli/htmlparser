@@ -1,5 +1,23 @@
 [
-    true,
-    true,
-    true
+    {
+        "session_name": "session_1",
+        "phone": "Unknown-1",
+        "username": "Unknown-1",
+        "first_name": "Unknown-1",
+        "status": "available"
+    },
+    {
+        "session_name": "session_2",
+        "phone": "Unknown-2",
+        "username": "Unknown-2",
+        "first_name": "Unknown-2",
+        "status": "available"
+    },
+    {
+        "session_name": "session_3",
+        "phone": "Unknown-3",
+        "username": "Unknown-3",
+        "first_name": "Unknown-3",
+        "status": "available"
+    }
 ]
